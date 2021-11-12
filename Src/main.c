@@ -58,13 +58,14 @@ void SystemClock_Config(void);
 
 #define TICK_FREQ_F 72000000.f
 
+uint32_t light_time = (uint32_t) (TICK_FREQ_F / 1000.f);
 uint32_t freq[6] = {
   (uint32_t) (TICK_FREQ_F / 82.41f),
   (uint32_t) (TICK_FREQ_F / 110.f),
   (uint32_t) (TICK_FREQ_F / 146.83f),
   (uint32_t) (TICK_FREQ_F / 196.f),
   (uint32_t) (TICK_FREQ_F / 246.94f),
-  (uint32_t) (TICK_FREQ_F / 329.63f),
+  (uint32_t) (TICK_FREQ_F / 329.63f)
 };
 volatile int freq_i = 0;
 
@@ -122,12 +123,14 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  uint32_t tim32_start_cnt, delay_ticks;
+  uint32_t tim32_start_cnt = get32BitTickCnt(), delay_ticks;
   while(1) {
     delay_ticks = freq[freq_i];
-    tim32_start_cnt = get32BitTickCnt();
     while ((get32BitTickCnt() - tim32_start_cnt) < delay_ticks) { }
-    HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_8);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_SET);
+    tim32_start_cnt = get32BitTickCnt();
+    while ((get32BitTickCnt() - tim32_start_cnt) < light_time) { }
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_RESET);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
