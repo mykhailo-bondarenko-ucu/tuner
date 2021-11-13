@@ -70,7 +70,18 @@ uint32_t freq[6] = {
 volatile int freq_i = 0;
 
 uint32_t get32BitTickCnt() {
-  return (__HAL_TIM_GET_COUNTER(&htim3) << 16) + __HAL_TIM_GET_COUNTER(&htim2);
+  uint32_t tim3cnt = __HAL_TIM_GET_COUNTER(&htim3);
+  uint32_t tim2cnt = __HAL_TIM_GET_COUNTER(&htim2);
+  return (tim3cnt << 16) + tim2cnt;
+}
+
+uint32_t joined32BitDelay(uint32_t delay_ticks) {
+  uint16_t upperpart = delay_ticks >> 16;
+  uint16_t lowerpart = delay_ticks & 0xFFFF;
+  uint32_t tim3cnt = __HAL_TIM_GET_COUNTER(&htim3);
+  while ((__HAL_TIM_GET_COUNTER(&htim3) - tim3cnt) < upperpart) {}
+  uint32_t tim2cnt = __HAL_TIM_GET_COUNTER(&htim2);
+  while ((__HAL_TIM_GET_COUNTER(&htim2) - tim2cnt) < lowerpart) {}
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
@@ -112,8 +123,12 @@ int main(void)
   MX_TIM2_Init();
   MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
-  HAL_TIM_Base_Start_IT(&htim3);
-  HAL_TIM_Base_Start_IT(&htim2);
+  __HAL_TIM_ENABLE_IT(&htim3, TIM_IT_UPDATE);
+  __HAL_TIM_ENABLE(&htim3);
+  __HAL_TIM_ENABLE_IT(&htim2, TIM_IT_UPDATE);
+  __HAL_TIM_ENABLE(&htim2);
+  // HAL_TIM_Base_Start_IT(&htim3);
+  // HAL_TIM_Base_Start_IT(&htim2);
   HAL_Delay(10);
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_RESET);
@@ -124,11 +139,10 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   uint32_t tim32_start_cnt = get32BitTickCnt(), delay_ticks;
   while(1) {
-    delay_ticks = freq[freq_i];
-    while ((get32BitTickCnt() - tim32_start_cnt) < delay_ticks) { }
+    delay_ticks = freq[freq_i] - light_time;
+    joined32BitDelay(delay_ticks);
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_SET);
-    tim32_start_cnt = get32BitTickCnt();
-    while ((get32BitTickCnt() - tim32_start_cnt) < light_time) { }
+    joined32BitDelay(light_time);
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_RESET);
     /* USER CODE END WHILE */
 
