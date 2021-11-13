@@ -73,8 +73,7 @@ uint32_t get32BitTickCnt() {
   return (__HAL_TIM_GET_COUNTER(&htim3) << 16) + __HAL_TIM_GET_COUNTER(&htim2);
 }
 
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
-{
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
   if (GPIO_Pin == GPIO_PIN_8) {
     freq_i = (freq_i + 1) % 6;
   }
@@ -113,11 +112,11 @@ int main(void)
   MX_TIM2_Init();
   MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
+  HAL_TIM_Base_Start_IT(&htim3);
+  HAL_TIM_Base_Start_IT(&htim2);
   HAL_Delay(10);
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_RESET);
-  HAL_TIM_Base_Start_IT(&htim2);
-  HAL_TIM_Base_Start_IT(&htim3);
 
   /* USER CODE END 2 */
 
