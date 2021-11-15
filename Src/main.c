@@ -81,7 +81,8 @@ void setupDiodeTickDelays(double* tuning) {
 
 // === Functions for timers
 
-volatile uint8_t tim2InterruptFlag = 0;
+volatile uint8_t tim2UpdateInterruptFlag = 0;
+
 void tim2_32BitDelay(uint32_t delay_ticks) {
   uint16_t tim2_st = __HAL_TIM_GET_COUNTER(&htim2);
   uint16_t ticksUntilInterr = 0xFFFF - tim2_st;
@@ -92,13 +93,13 @@ void tim2_32BitDelay(uint32_t delay_ticks) {
   }
 
   delay_ticks -= ticksUntilInterr;
-  tim2InterruptFlag = 0;
-  while (!tim2InterruptFlag) {}
+  tim2UpdateInterruptFlag = 0;
+  while (!tim2UpdateInterruptFlag) {}
 
   while (delay_ticks > 0xFFFF) {
     delay_ticks -= 0xFFFF;
-    tim2InterruptFlag = 0;
-    while (!tim2InterruptFlag) {}
+    tim2UpdateInterruptFlag = 0;
+    while (!tim2UpdateInterruptFlag) {}
   }
 
   while (((uint16_t) __HAL_TIM_GET_COUNTER(&htim2)) < delay_ticks) {}
@@ -115,7 +116,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
   if (htim->Instance == TIM2) {
-    tim2InterruptFlag = 1;
+    tim2UpdateInterruptFlag = 1;
   }
 }
 
