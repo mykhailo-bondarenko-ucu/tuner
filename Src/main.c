@@ -56,37 +56,66 @@ void SystemClock_Config(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-#define TICK_FREQ_F 72000000.f
+// === functions for tuning frequencies & delays
 
-uint32_t light_time = (uint32_t) (TICK_FREQ_F / 1000.f);
-uint32_t freq[6] = {
-  (uint32_t) (TICK_FREQ_F / 82.41f),
-  (uint32_t) (TICK_FREQ_F / 110.f),
-  (uint32_t) (TICK_FREQ_F / 146.83f),
-  (uint32_t) (TICK_FREQ_F / 196.f),
-  (uint32_t) (TICK_FREQ_F / 246.94f),
-  (uint32_t) (TICK_FREQ_F / 329.63f)
+#define TICK_FREQ_D 72000000.
+
+double tunings[1][6] = {
+  { 82.41, 110., 146.83, 196., 246.94, 329.63 } // E Major
 };
-volatile int freq_i = 0;
 
-uint32_t get32BitTickCnt() {
-  uint32_t tim3cnt = __HAL_TIM_GET_COUNTER(&htim3);
-  uint32_t tim2cnt = __HAL_TIM_GET_COUNTER(&htim2);
-  return (tim3cnt << 16) + tim2cnt;
+typedef struct {
+  uint32_t pause_ticks;
+  uint32_t light_ticks;
+} tick_delay;
+
+volatile tick_delay diode_tick_delays[6];
+
+void setupDiodeTickDelays(double* tuning) {
+  for (size_t i = 0; i < 6; i ++) {
+    uint32_t total_ticks = (uint32_t) (TICK_FREQ_D / tuning[i]);
+    diode_tick_delays[i].light_ticks = total_ticks / 10;
+    diode_tick_delays[i].pause_ticks = total_ticks - diode_tick_delays[i].light_ticks;
+  }
 }
 
-uint32_t joined32BitDelay(uint32_t delay_ticks) {
-  uint16_t upperpart = delay_ticks >> 16;
-  uint16_t lowerpart = delay_ticks & 0xFFFF;
-  uint32_t tim3cnt = __HAL_TIM_GET_COUNTER(&htim3);
-  while ((__HAL_TIM_GET_COUNTER(&htim3) - tim3cnt) < upperpart) {}
-  uint32_t tim2cnt = __HAL_TIM_GET_COUNTER(&htim2);
-  while ((__HAL_TIM_GET_COUNTER(&htim2) - tim2cnt) < lowerpart) {}
+// === Functions for timers
+
+volatile uint8_t tim2InterruptFlag = 0;
+void tim2_32BitDelay(uint32_t delay_ticks) {
+  uint16_t tim2_st = __HAL_TIM_GET_COUNTER(&htim2);
+  uint16_t ticksUntilInterr = 0xFFFF - tim2_st;
+
+  if (delay_ticks < ((uint32_t) ticksUntilInterr)) {
+    while (((uint16_t) (__HAL_TIM_GET_COUNTER(&htim2) - tim2_st)) < delay_ticks) {}
+    return;
+  }
+
+  delay_ticks -= ticksUntilInterr;
+  tim2InterruptFlag = 0;
+  while (!tim2InterruptFlag) {}
+
+  while (delay_ticks > 0xFFFF) {
+    delay_ticks -= 0xFFFF;
+    tim2InterruptFlag = 0;
+    while (!tim2InterruptFlag) {}
+  }
+
+  while (((uint16_t) __HAL_TIM_GET_COUNTER(&htim2)) < delay_ticks) {}
 }
 
+// === Interrupt Handlers
+
+volatile uint32_t freq_i = 0;
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
   if (GPIO_Pin == GPIO_PIN_8) {
     freq_i = (freq_i + 1) % 6;
+  }
+}
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
+  if (htim->Instance == TIM2) {
+    tim2InterruptFlag = 1;
   }
 }
 
@@ -121,29 +150,31 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_TIM2_Init();
-  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
-  __HAL_TIM_ENABLE_IT(&htim3, TIM_IT_UPDATE);
-  __HAL_TIM_ENABLE(&htim3);
-  __HAL_TIM_ENABLE_IT(&htim2, TIM_IT_UPDATE);
-  __HAL_TIM_ENABLE(&htim2);
-  // HAL_TIM_Base_Start_IT(&htim3);
-  // HAL_TIM_Base_Start_IT(&htim2);
-  HAL_Delay(10);
+
+  // === setup timers
+
+  HAL_TIM_Base_Start_IT(&htim2);
+
+  // === setup all pins
+
+  HAL_Delay(10);  // blink C13 for restart confirmation
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_RESET);
+
+  // === setup initial string frequencies
+
+  setupDiodeTickDelays(tunings[0]);
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  uint32_t tim32_start_cnt = get32BitTickCnt(), delay_ticks;
   while(1) {
-    delay_ticks = freq[freq_i] - light_time;
-    joined32BitDelay(delay_ticks);
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_SET);
-    joined32BitDelay(light_time);
+    tim2_32BitDelay(diode_tick_delays[freq_i].light_ticks);
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_RESET);
+    tim2_32BitDelay(diode_tick_delays[freq_i].pause_ticks);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
