@@ -161,7 +161,14 @@ int main(void)
 
   HAL_Delay(10);  // blink C13 for restart confirmation
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
+
+  // reset all diodes
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_RESET);
 
   // === setup initial string frequencies
 
@@ -171,11 +178,51 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+
+  uint32_t delays[6];
+  uint32_t lighted[6] = {0, 0, 0, 0, 0, 0};
+  for (uint8_t i = 0; i < 6; i++) {
+    delays[i] = diode_tick_delays[i].pause_ticks;
+  }
+
+  uint32_t min;
+  uint8_t minind;
+  uint16_t pin_num;
+  uint32_t delay_dt = __HAL_TIM_GET_COUNTER(&htim2);
   while(1) {
-    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_SET);
-    tim2_32BitDelay(diode_tick_delays[freq_i].light_ticks);
-    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_RESET);
-    tim2_32BitDelay(diode_tick_delays[freq_i].pause_ticks);
+    min = delays[0]; minind = 0;
+    for (uint8_t i = 1; i < 6; i++) {
+      if (delays[i] < min) {
+        min = delays[i];
+        minind = i;
+      }
+    }
+
+    if (minind == 0) pin_num = GPIO_PIN_8;
+    else if (minind == 1) pin_num = GPIO_PIN_9;
+    else if (minind == 2) pin_num = GPIO_PIN_10;
+    else if (minind == 3) pin_num = GPIO_PIN_11;
+    else if (minind == 4) pin_num = GPIO_PIN_12;
+    else pin_num = GPIO_PIN_15;
+
+    delay_dt = __HAL_TIM_GET_COUNTER(&htim2) - delay_dt;
+    if (delay_dt < min) tim2_32BitDelay(min - delay_dt);
+    delay_dt = __HAL_TIM_GET_COUNTER(&htim2);
+
+    for (uint8_t i = 0; i < 6; i++) {
+      delays[i] -= min;
+    }
+
+    if (lighted[minind]) {
+      HAL_GPIO_WritePin(GPIOA, pin_num, GPIO_PIN_RESET);
+      delays[minind] = diode_tick_delays[minind].pause_ticks;
+    } else {
+      HAL_GPIO_WritePin(GPIOA, pin_num, GPIO_PIN_SET);
+      delays[minind] = diode_tick_delays[minind].light_ticks;
+    }
+
+    lighted[minind] = !lighted[minind];
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
