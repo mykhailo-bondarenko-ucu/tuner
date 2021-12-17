@@ -34,6 +34,9 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+
+#define TICK_FREQ_D 72000000.
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -44,6 +47,20 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
+
+volatile int last_dt = 0;
+volatile int position = 0;
+volatile uint8_t btn_is_pressed = 0, btn_was_pressed = 0;
+double tunings[1][6] = {
+  { 82.41, 110., 146.83, 196., 246.94, 329.63 } // E Major
+};
+
+typedef struct {
+  uint32_t pause_ticks;
+  uint32_t light_ticks;
+} tick_delay;
+
+volatile tick_delay diode_tick_delays[6];
 
 /* USER CODE END PV */
 
@@ -56,20 +73,7 @@ void SystemClock_Config(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-// === functions for tuning frequencies & delays
-
-#define TICK_FREQ_D 72000000.
-
-double tunings[1][6] = {
-  { 82.41, 110., 146.83, 196., 246.94, 329.63 } // E Major
-};
-
-typedef struct {
-  uint32_t pause_ticks;
-  uint32_t light_ticks;
-} tick_delay;
-
-volatile tick_delay diode_tick_delays[6];
+// === Functions for tuning frequencies & delays
 
 void setupDiodeTickDelays(double* tuning) {
   for (size_t i = 0; i < 6; i ++) {
@@ -82,7 +86,6 @@ void setupDiodeTickDelays(double* tuning) {
 // === Functions for timers
 
 volatile uint8_t tim2UpdateInterruptFlag = 0;
-
 void tim2_32BitDelay(uint32_t delay_ticks) {
   uint16_t tim2_st = __HAL_TIM_GET_COUNTER(&htim2);
   uint16_t ticksUntilInterr = 0xFFFF - tim2_st;
@@ -107,10 +110,28 @@ void tim2_32BitDelay(uint32_t delay_ticks) {
 
 // === Interrupt Handlers
 
-volatile uint32_t freq_i = 0;
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
-  if (GPIO_Pin == GPIO_PIN_8) {
-    freq_i = (freq_i + 1) % 6;
+  if (GPIO_Pin == ENC_BTN_Pin) {
+    static uint32_t enc_btn_last_it_tick;
+    if (HAL_GetTick() - enc_btn_last_it_tick < 50) return;
+    enc_btn_last_it_tick = HAL_GetTick();
+    btn_is_pressed = !btn_is_pressed;
+    if (btn_is_pressed) btn_was_pressed = 1;
+    HAL_GPIO_TogglePin(S1_GPIO_Port, S1_Pin);
+  }
+  if (GPIO_Pin == ENC_CLK_Pin) {
+    static uint32_t enc_clk_last_it_tick;
+    GPIO_PinState dt = HAL_GPIO_ReadPin(ENC_DT_GPIO_Port, ENC_DT_Pin);
+    if (HAL_GetTick() - enc_clk_last_it_tick < 50) return;
+    if (HAL_GetTick() - enc_clk_last_it_tick < 150 && dt != last_dt) return;
+    enc_clk_last_it_tick = HAL_GetTick();
+    position += (dt == GPIO_PIN_RESET) ? 1 : -1;
+    last_dt = dt;
+    HAL_GPIO_WritePin(S2_GPIO_Port, S2_Pin, position & 1);
+    HAL_GPIO_WritePin(S3_GPIO_Port, S3_Pin, (position >> 1) & 1);
+    HAL_GPIO_WritePin(S4_GPIO_Port, S4_Pin, (position >> 2) & 1);
+    HAL_GPIO_WritePin(S5_GPIO_Port, S5_Pin, (position >> 3) & 1);
+    HAL_GPIO_WritePin(S6_GPIO_Port, S6_Pin, (position >> 4) & 1);
   }
 }
 
@@ -163,12 +184,12 @@ int main(void)
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
 
   // reset all diodes
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(S1_GPIO_Port, S1_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(S2_GPIO_Port, S2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(S3_GPIO_Port, S3_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(S4_GPIO_Port, S4_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(S5_GPIO_Port, S5_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(S6_GPIO_Port, S6_Pin, GPIO_PIN_RESET);
 
   // === setup initial string frequencies
 
@@ -178,6 +199,8 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+
+  while(1) {__asm("nop");}
 
   uint32_t delays[6];
   uint32_t lighted[6] = {0, 0, 0, 0, 0, 0};
